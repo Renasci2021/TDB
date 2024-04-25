@@ -2,7 +2,6 @@
 
 #include "include/storage_engine/index/index.h"
 
-// TODO [Lab2]
 // IndexScanOperator的实现逻辑,通过索引直接获取对应的Page来减少磁盘的扫描
 
 RC IndexScanPhysicalOperator::open(Trx *trx)

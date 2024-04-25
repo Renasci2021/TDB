@@ -185,6 +185,8 @@ RC BplusTreeIndex::delete_entry(const char *record, const RID *rid)
     LOG_WARN("Failed to delete entry. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
+
+  return RC::SUCCESS;
 }
 
 IndexScanner *BplusTreeIndex::create_scanner(
