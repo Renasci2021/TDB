@@ -48,12 +48,30 @@ Frame *FrameManager::get(int file_desc, PageNum page_num)
   return get_internal(frame_id);
 }
 
-/**
- * TODO [Lab1] 需要同学们实现页帧驱逐
- */
 int FrameManager::evict_frames(int count, std::function<RC(Frame *frame)> evict_action)
 {
-  return 0;
+  std::lock_guard<std::mutex> lock_guard(lock_);
+  int evicted_count = 0;
+  auto evictor = [this, &evicted_count, count, evict_action](const FrameId &frame_id, Frame *frame) -> bool {
+    if (evicted_count >= count) {
+      // 已达到驱逐目标，结束遍历
+      return false;
+    }
+    if (frame->pin_count() == 0) {
+      // Frame 对应的 Page 是脏页，需要先刷回磁盘再驱逐
+      if (frame->dirty()) {
+        evict_action(frame);
+      }
+      frames_.remove(frame_id);
+      allocator_.free(frame);
+      evicted_count++;
+    }
+    // 继续遍历
+    return true;
+  };
+
+  frames_.foreach(evictor);
+  return evicted_count;
 }
 
 Frame *FrameManager::get_internal(const FrameId &frame_id)

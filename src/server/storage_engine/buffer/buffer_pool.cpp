@@ -200,40 +200,64 @@ RC FileBufferPool::unpin_page(Frame *frame)
   return RC::SUCCESS;
 }
 
-/**
- * TODO [Lab1] 需要同学们实现页面刷盘，下面是可参考的思路
- */
 RC FileBufferPool::flush_page(Frame &frame)
 {
   std::scoped_lock lock_guard(lock_);
   return flush_page_internal(frame);
 }
-/**
- * TODO [Lab1] 需要同学们实现页面刷盘，下面是可参考的思路
- */
+
 RC FileBufferPool::flush_page_internal(Frame &frame)
 {
-//  1. 获取页面Page
-//  2. 计算该Page在文件中的偏移量
-//  3. 写入数据到文件的目标位置
-//  4. 清除frame的脏标记
-//  5. 记录和返回成功
+  int64_t offset = ((int64_t)frame.page_num()) * BP_PAGE_SIZE;
+
+  if (lseek(file_desc_, offset, SEEK_SET) == -1) {
+    LOG_ERROR("Failed to load page %s:%d, due to failed to lseek:%s.",
+              file_name_.c_str(), frame.page_num(), strerror(errno));
+    return RC::IOERR_SEEK;
+  }
+
+  int ret = writen(file_desc_, &frame.page(), BP_PAGE_SIZE);
+  if (ret != 0) {
+    LOG_ERROR("Failed to load page %s, file_desc:%d, page num:%d, due to failed to write data:%s, ret=%d, page count=%d",
+              file_name_.c_str(), file_desc_, frame.page_num(), strerror(errno), ret, file_header_->allocated_pages);
+    return RC::IOERR_WRITE;
+  }
+
+  frame.clear_dirty();
   return RC::SUCCESS;
 }
 
-/**
- * TODO [Lab1] 需要同学们实现某个指定页面的驱逐
- */
 RC FileBufferPool::evict_page(PageNum page_num, Frame *buf)
-{
+{  
+  if (buf == nullptr) {
+    LOG_ERROR("Failed to evict page %s:%d, due to buf is null", file_name_.c_str(), page_num);
+    return RC::BUFFERPOOL_NOBUF;
+  }
+  RC rc = flush_page(*buf);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to evict page %s:%d, %s",
+              file_name_.c_str(), page_num, strrc(rc));
+    return rc;
+  }
+  buf->unpin();
   return RC::SUCCESS;
 }
-/**
- * TODO [Lab1] 需要同学们实现该文件所有页面的驱逐
- */
+
 RC FileBufferPool::evict_all_pages()
 {
-  return RC::SUCCESS;
+  // 记录第一个错误
+  RC first_error = RC::SUCCESS;
+  for (int i = 0; i < file_header_->page_count; i++) {
+    Frame *frame = frame_manager_.get(file_desc_, i);
+    RC rc = evict_page(i, frame);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("Failed to evict all pages when evict page %d, %s", i, strrc(rc));
+      if (first_error == RC::SUCCESS) {
+        first_error = rc;
+      }
+    }
+  }
+  return first_error;
 }
 
 /**
@@ -462,12 +486,14 @@ RC BufferPoolManager::close_file(const char *_file_name)
   return RC::SUCCESS;
 }
 
-/**
- * TODO [Lab1] 需要同学们实现页面刷盘
- */
 RC BufferPoolManager::flush_page(Frame &frame)
-{
-  return RC::SUCCESS;
+{ 
+  FileBufferPool *instance = fd_buffer_pools_[frame.file_desc()];
+  if (instance == nullptr) {
+    LOG_ERROR("Failed to flush page, due to file buffer pool is not found. file desc=%d", frame.file_desc());
+    return RC::BUFFERPOOL_NOBUF;
+  }
+  return instance->flush_page(frame);
 }
 
 static BufferPoolManager *default_bpm = nullptr;
