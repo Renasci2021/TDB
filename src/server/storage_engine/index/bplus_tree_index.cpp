@@ -90,7 +90,54 @@ RC BplusTreeIndex::close()
  */
 RC BplusTreeIndex::insert_entry(const char *record, const RID *rid)
 {
-  // TODO [Lab2] 增加索引项的处理逻辑
+  if (record == nullptr || rid == nullptr)
+  {
+    LOG_WARN("Failed to insert entry due to the record or rid is nullptr.");
+    return RC::RECORD_INVALID_RID;
+  }
+
+  std::vector<const char *> multi_keys;
+  for (auto multi_field : multi_field_metas_)
+  {
+    bool field_found = false;
+    for (int i = 0; i < index_meta_.field_amount(); i++)
+    {
+      if (strcmp(multi_field.name(), index_meta_.field(i)) == 0)
+      {
+        multi_keys.push_back(record + multi_field.offset());
+        field_found = true;
+        break;
+      }
+    }
+    if (!field_found)
+    {
+      LOG_WARN("Failed to insert entry due to the field not found in the record.");
+      return RC::RECORD_INVALID_KEY;
+    }
+  }
+
+  if (multi_keys.empty())
+  {
+    LOG_WARN("Failed to insert entry due to the field amount is not equal to the index field amount.");
+    return RC::RECORD_INVALID_KEY;
+  }
+  
+  if (index_meta_.is_unique())
+  {
+    std::list<RID> rids;
+    if (index_handler_.get_entry(multi_keys.data(), rids) == RC::SUCCESS)
+    {
+      LOG_WARN("Failed to insert entry due to the key is duplicate.");
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+  }
+
+  RC rc = index_handler_.insert_entry(multi_keys.data(), rid, multi_keys.size());
+  if (rc != RC::SUCCESS)
+  {
+    LOG_WARN("Failed to insert entry. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
   return RC::SUCCESS;
 }
 
@@ -100,8 +147,44 @@ RC BplusTreeIndex::insert_entry(const char *record, const RID *rid)
  */
 RC BplusTreeIndex::delete_entry(const char *record, const RID *rid)
 {
-  // TODO [Lab2] 增加索引项的处理逻辑
-  return RC::SUCCESS;
+  if (record == nullptr || rid == nullptr)
+  {
+    LOG_WARN("Failed to delete entry due to the record or rid is nullptr.");
+    return RC::RECORD_INVALID_RID;
+  }
+
+  std::vector<const char *> multi_keys;
+  for (auto multi_field : multi_field_metas_)
+  {
+    bool field_found = false;
+    for (int i = 0; i < index_meta_.field_amount(); i++)
+    {
+      if (strcmp(multi_field.name(), index_meta_.field(i)) == 0)
+      {
+        multi_keys.push_back(record + multi_field.offset());
+        field_found = true;
+        break;
+      }
+    }
+    if (!field_found)
+    {
+      LOG_WARN("Failed to delete entry due to the field not found in the record.");
+      return RC::RECORD_INVALID_KEY;
+    }
+  }
+
+  if (multi_keys.empty())
+  {
+    LOG_WARN("Failed to delete entry due to the field amount is not equal to the index field amount.");
+    return RC::RECORD_INVALID_KEY;
+  }
+
+  RC rc = index_handler_.delete_entry(multi_keys.data(), rid, multi_keys.size());
+  if (rc != RC::SUCCESS)
+  {
+    LOG_WARN("Failed to delete entry. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
 }
 
 IndexScanner *BplusTreeIndex::create_scanner(
