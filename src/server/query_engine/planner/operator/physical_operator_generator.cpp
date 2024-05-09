@@ -1,33 +1,35 @@
 #include "include/query_engine/planner/operator/physical_operator_generator.h"
-#include "include/query_engine/structor/expression/value_expression.h"
-#include "include/query_engine/structor/expression/comparison_expression.h"
-#include "include/query_engine/planner/operator/index_scan_physical_operator.h"
 
 #include <cmath>
 #include <utility>
-#include "include/query_engine/planner/node/logical_node.h"
-#include "include/query_engine/planner/operator/physical_operator.h"
-#include "include/query_engine/planner/node/table_get_logical_node.h"
-#include "include/query_engine/planner/operator/table_scan_physical_operator.h"
-#include "include/query_engine/planner/node/predicate_logical_node.h"
-#include "include/query_engine/planner/operator/predicate_physical_operator.h"
-#include "include/query_engine/planner/node/order_by_logical_node.h"
-#include "include/query_engine/planner/operator/order_physical_operator.h"
-#include "include/query_engine/planner/node/project_logical_node.h"
-#include "include/query_engine/planner/operator/project_physical_operator.h"
-#include "include/query_engine/planner/node/aggr_logical_node.h"
-#include "include/query_engine/planner/operator/aggr_physical_operator.h"
-#include "include/query_engine/planner/node/insert_logical_node.h"
-#include "include/query_engine/planner/operator/insert_physical_operator.h"
-#include "include/query_engine/planner/node/delete_logical_node.h"
-#include "include/query_engine/planner/operator/delete_physical_operator.h"
-#include "include/query_engine/planner/node/update_logical_node.h"
-#include "include/query_engine/planner/operator/update_physical_operator.h"
-#include "include/query_engine/planner/node/explain_logical_node.h"
-#include "include/query_engine/planner/operator/explain_physical_operator.h"
-#include "include/query_engine/planner/node/join_logical_node.h"
-#include "include/query_engine/planner/operator/group_by_physical_operator.h"
+
 #include "common/log/log.h"
+#include "include/query_engine/planner/node/aggr_logical_node.h"
+#include "include/query_engine/planner/node/delete_logical_node.h"
+#include "include/query_engine/planner/node/explain_logical_node.h"
+#include "include/query_engine/planner/node/insert_logical_node.h"
+#include "include/query_engine/planner/node/join_logical_node.h"
+#include "include/query_engine/planner/node/logical_node.h"
+#include "include/query_engine/planner/node/order_by_logical_node.h"
+#include "include/query_engine/planner/node/predicate_logical_node.h"
+#include "include/query_engine/planner/node/project_logical_node.h"
+#include "include/query_engine/planner/node/table_get_logical_node.h"
+#include "include/query_engine/planner/node/update_logical_node.h"
+#include "include/query_engine/planner/operator/aggr_physical_operator.h"
+#include "include/query_engine/planner/operator/delete_physical_operator.h"
+#include "include/query_engine/planner/operator/explain_physical_operator.h"
+#include "include/query_engine/planner/operator/group_by_physical_operator.h"
+#include "include/query_engine/planner/operator/index_scan_physical_operator.h"
+#include "include/query_engine/planner/operator/insert_physical_operator.h"
+#include "include/query_engine/planner/operator/join_physical_operator.h"
+#include "include/query_engine/planner/operator/order_physical_operator.h"
+#include "include/query_engine/planner/operator/physical_operator.h"
+#include "include/query_engine/planner/operator/predicate_physical_operator.h"
+#include "include/query_engine/planner/operator/project_physical_operator.h"
+#include "include/query_engine/planner/operator/table_scan_physical_operator.h"
+#include "include/query_engine/planner/operator/update_physical_operator.h"
+#include "include/query_engine/structor/expression/comparison_expression.h"
+#include "include/query_engine/structor/expression/value_expression.h"
 #include "include/storage_engine/recorder/table.h"
 
 using namespace std;
@@ -70,8 +72,12 @@ RC PhysicalOperatorGenerator::create(LogicalNode &logical_operator, unique_ptr<P
     case LogicalNodeType::EXPLAIN: {
       return create_plan(static_cast<ExplainLogicalNode &>(logical_operator), oper, is_delete);
     }
-    // TODO [Lab3] 实现JoinNode到JoinOperator的转换
-    case LogicalNodeType::JOIN:
+
+    case LogicalNodeType::JOIN: {
+      return create_plan(static_cast<JoinLogicalNode &>(logical_operator),
+                         oper);
+    }
+
     case LogicalNodeType::GROUP_BY: {
       return RC::UNIMPLENMENT;
     }
@@ -347,9 +353,30 @@ RC PhysicalOperatorGenerator::create_plan(
   return rc;
 }
 
-// TODO [Lab3] 根据LogicalNode生成对应的PhyiscalOperator
 RC PhysicalOperatorGenerator::create_plan(
     JoinLogicalNode &join_oper, unique_ptr<PhysicalOperator> &oper)
 {
-  return RC::UNIMPLENMENT;
+  vector<unique_ptr<LogicalNode>> &child_opers = join_oper.children();
+  if (child_opers.size() != 2) {
+    LOG_WARN("join operator should have 2 children");
+    return RC::INVALID_ARGUMENT;
+  }
+  unique_ptr<PhysicalOperator> left_child, right_child;
+  RC rc = create(*child_opers[0], left_child);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create left child operator of join operator. rc=%s",
+             strrc(rc));
+    return rc;
+  }
+  rc = create(*child_opers[1], right_child);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create right child operator of join operator. rc=%s",
+             strrc(rc));
+    return rc;
+  }
+  JoinPhysicalOperator *join_physical_operator =
+      new JoinPhysicalOperator(std::move(left_child), std::move(right_child),
+                               std::move(join_oper.condition()));
+  oper = unique_ptr<PhysicalOperator>(join_physical_operator);
+  return RC::SUCCESS;
 }
