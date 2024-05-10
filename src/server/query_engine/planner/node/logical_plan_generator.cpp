@@ -126,15 +126,15 @@ RC LogicalPlanGenerator::plan_node(
   if (table_get_nodes.size() == 1) {
     root = std::move(table_get_nodes[0]);
   } else {
+    root = std::move(table_get_nodes[0]);
+    auto join_filter_stmts = select_stmt->join_filter_stmts();
     for (int i = 1; i < table_get_nodes.size(); i++) {
-      root = std::move(table_get_nodes[i - 1]);
-      auto join_filter_stmts = select_stmt->join_filter_stmts();
-      auto conjunct_expr =
+      unique_ptr<JoinLogicalNode> join_logical_node =
+          unique_ptr<JoinLogicalNode>(new JoinLogicalNode);
+      auto conjunction_expr =
           _transfer_filter_stmt_to_expr(join_filter_stmts[i - 1]);
-      if (conjunct_expr != nullptr) {
-        unique_ptr<JoinLogicalNode> join_logical_node =
-            unique_ptr<JoinLogicalNode>(new JoinLogicalNode);
-        join_logical_node->set_condition(std::move(conjunct_expr));
+      if (conjunction_expr != nullptr) {
+        join_logical_node->set_condition(std::move(conjunction_expr));
         join_logical_node->add_child(std::move(root));
         join_logical_node->add_child(std::move(table_get_nodes[i]));
         root = std::move(join_logical_node);
